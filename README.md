@@ -10,3 +10,9 @@ What file what do?
 - auto_lang: creats an auto translated lang-files in selected languages
 
 - meme.py: just a test
+
+Features:
+- AI task generator
+- Minimum text in interface
+- Resizeable contents
+- Light/Dark theme switcher
