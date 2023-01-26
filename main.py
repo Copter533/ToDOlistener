@@ -60,6 +60,11 @@ def translate(text, destination='en'):
     return translated, language
 
 
+class AllowToProceed(Exception):
+    def __init__(self, message: str = ''):
+        self.txt = message
+
+
 class TaskLabel(QWidget):
     def __init__(self, title, description=None, column=0, deadline=None, reward=None):
         super().__init__()
@@ -164,56 +169,94 @@ class TaskLabel(QWidget):
 class OpenAIFetcher(QThread):
     def __init__(self):
         QThread.__init__(self)
+        self.data = {}
+        self.topic = ''
         self.result = 'OK'
-        self.title = 'None'
-        self.desc = 'None'
-        self.reward = 'None'
-        self.raw = {}
+        self.prev = []
+
+    def get_previous_responses(self):
+        result = ''
+        prefixes = ['AI', 'Answer']
+        for i, response in enumerate(self.prev):
+            prefix = prefixes[i % 2]
+            result += f'\n{prefix}: {response}'
+        if len(result): result += '\nAI:'
+        return result
 
     def run(self):
-        prompt = ("Give an example of a daily task on a certain topic, format it as follows:\n"
-                  "on the first line the name, on the second the description of the task, on the third "
-                  "the reward for the task. Topic: `{}`")
         try:
-            topic_en, original_lang = translate(self.title)
+            topic_en, original_lang = translate(self.topic)
+            prompt = ("Create a title, description and reward for provided topic, if there is too few information "
+                      "provided, you can ask for more using one of this methods: "
+                      
+                      "chooseOption \"Select one of these options\" | Read|Learn|Repeat (you will get number of option "
+                      "in answer), getText \"What text you want to get\", "
+                      "getTrue \"Binary question with yes or no answers\" and "
+                      "endDialog \"message\" if you want to end it, can be used if got unclear commands multiple times."
+                      
+                      "Format answer like: "
+                      "\"title, description, reward\".\n\n"
+                      "EXAMPLE #1:\n"
+                      "Topic: \"Finish my project\"\n"
+                      "AI: getText \"What is your project about?\"\n"
+                      "Answer: About creating TODO list using python\n"
+                      "AI: \"Project finishing, Finish my TODO list project in Python and publish it to github, +1 project in the portfolio\"\n\n"
+                      "EXAMPLE #2:\n"
+                      "Topic: \"Doing my homework\"\n"
+                      "AI: \"Homework, Finish my homework until 22:00, Good mark tomorrow\"\n\n"
+                      "Topic: \"{}\"{}".format(topic_en, self.get_previous_responses()))
             response = openai.Completion.create(
-                prompt=prompt.format(topic_en),
                 model="text-davinci-003",
-                temperature=0.7,
-                max_tokens=256,
+                prompt=prompt,
+                temperature=1,
+                max_tokens=100,
                 top_p=1,
-                frequency_penalty=0,
-                presence_penalty=0
+                frequency_penalty=0.5,
+                presence_penalty=0,
+                stop=["."]
             )
             answer_en = response["choices"][0]["text"]
             answer_en = answer_en.strip('.').strip()
         except Exception as exception:
             self.result = str(exception)
         else:
-            self.raw = {"A": answer_en, "Q": topic_en}
-            self.title = 'None'
-            self.desc = 'None'
-            self.reward = 'None'
-            number = 0
-            lines = answer_en.split("\n")
-            for line in lines:
-                if line == '': continue
-                clear_line = line.lower().replace("name:", "").replace("description:", ""). \
-                    replace("reward:", "").replace("task:", "").replace("title:", "").capitalize()
-                translated = translate(clear_line, destination=app_data["lang"][:2])[0]
-                if number == 0:
-                    self.title = translated
-                elif number == 1:
-                    self.desc = translated
-                elif number == 2:
-                    self.reward = translated
-                number += 1
-            self.result = 'OK'
+            try:
+                while x.busy: pass
+                print('Proceeding...\t\t', answer_en)
+                if answer_en == '':
+                    self.result = 'REJECT'
+                    raise AllowToProceed
+                self.data = {}
+                lines = answer_en.split('\n')
+                first_line = lines[0].replace("AI:", "").replace('"', "").strip()
+                self.prev.append(first_line[4:])
+                for get_method in ["enddialog", "gettext", "gettrue", "chooseoption"]:
+                    if first_line.lower().startswith(get_method):  # AI: getText "..."
+                        end_index = len(get_method)
+                        self.data['method'] = get_method
+                        if get_method == 'chooseoption':
+                            split_index = first_line.find("|")
+                            self.data['message'] = first_line[end_index:split_index].strip()
+                            self.data['options'] = first_line[split_index+1:].strip().split('|')
+                        else:
+                            self.data['message'] = first_line[end_index:]
+                        self.result = 'REPLY'
+                        raise AllowToProceed
+                else:
+                    clear_line = first_line.strip().strip('"')
+                    title, desc, reward = clear_line.split(',')
+                    self.data['title'] = title
+                    self.data['desc'] = desc
+                    self.data['reward'] = reward
+                    self.result = 'OK'
+            except AllowToProceed:
+                pass
 
 
 class Window(QWidget):
     def __init__(self):
         super().__init__()
+        self.busy = False
         self.fetch = OpenAIFetcher()
         self.autosaver = QTimer()
         self.autosaver.timeout.connect(self.autosave)
@@ -273,22 +316,47 @@ class Window(QWidget):
         if okay:
             openai.api_key = app_data["api_key"]
             self.toaster.showMessage(self, f'Generating task for you on topic "{topic}"', timeout=3000, closable=False)
+
+            self.fetch = OpenAIFetcher()
             self.fetch.finished.connect(self.show_auto_generated_form)
-            self.fetch.title = topic
+            self.fetch.topic = topic
             self.fetch.start()
 
     def show_auto_generated_form(self):
+        self.busy = True
+        data = self.fetch.data
         if self.fetch.result == 'OK':
-            raw = self.fetch.raw
-            topic = raw["Q"]
-            answer = raw["A"]
-            self.toaster.showMessage(self, 'Created:\n\tQ: ' + topic + '\n\tA: ' + answer.replace("\n", "\n\t") +
-                                     '\n\t' + self.fetch.reward, icon=QtWidgets.QStyle.SP_TrashIcon)
-            self.show_form_for_add_task(self.fetch.title, self.fetch.desc, self.fetch.reward)
+            self.toaster.showMessage(self, 'Created task for you.')
+            self.show_form_for_add_task(data['title'], data['desc'], data['reward'])
+        elif self.fetch.result == 'REPLY':
+            method = data['method']
+            okay, reply = False, ''
+            if method == 'gettext':
+                reply, okay = QInputDialog.getText(self, "Providing some text to AI", data['message'])
+            elif method == 'gettrue':
+                yes_or_no = show_dialog("Providing some text to AI", data['message'], QMessageBox.Question,
+                                        QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+                reply = ['Yes', 'No'][yes_or_no == QMessageBox.No]
+                okay = reply != QMessageBox.Cancel
+            elif method == 'chooseoption':
+                item, okay = QInputDialog.getItem(self, "Providing some text to AI", data['message'], data['options'])
+                reply = '№' + str(data['options'].index(item) + 1)
+
+            elif method == 'enddialog':
+                self.toaster.showMessage(self, 'OpenAI\'s tool ended dialog with message "{}"'.format(data['message']),
+                                         icon=QtWidgets.QStyle.SP_MessageBoxWarning)
+
+            if okay:
+                self.fetch.prev.append(reply)
+                self.fetch.start()
         else:
             self.toaster.showMessage(self, 'Something went wrong...\n' + self.fetch.result,
                                      icon=QtWidgets.QStyle.SP_MessageBoxCritical, timeout=10000, margin=30)
-        del self.form
+        try:
+            del self.form
+        except AttributeError:
+            pass
+        self.busy = False
 
     def generate_list_of_tasks(self):
         column_names = [
@@ -397,8 +465,7 @@ class Window(QWidget):
         self.form = Form()
         self.form.title_edit.setText(str(title))
         self.form.description_edit.setText(str(desc))
-        if self.fetch.reward != '':
-            self.form.reward_edit.setText(str(reward))
+        self.form.reward_edit.setText(str(reward))
         self.form.create_button.clicked.connect(self.add_new_task)
         self.form.exec_()
 
@@ -610,9 +677,13 @@ while __name__ == "__main__":
     primary_lang = Lang("ru_RU")
 
     if "data.json" not in files:
+        key, okay = QInputDialog.getText(None, "Proved api key for open ai",
+                                         "It can be found: https://beta.openai.com/account/api-keys, for free")
+        if not okay: break
         file = open("data.json", "w")
         file.write(
-            '{"lang": "en_US", "api_key": "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", "is_light_theme": false, "tasks": {"0": [{"title": "Example"}]}}')
+            '{"lang": "en_US", "api_key": "APIKEY", "is_light_theme": false, "tasks": {"0": [{"title": "Example"}]}}'.
+            replace("APIKEY", key))
         file.close()
 
     with open("data.json", "r", encoding="utf-8") as f:
