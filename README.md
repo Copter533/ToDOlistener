@@ -3,7 +3,7 @@
 Run main file to be a nice person =)
 
 
-What file what do?
+# What file what do?
 - main.py: creates an app
 - toast.py: handles a pop-up in corner of app
 - localisation: handles a multi-language ability
@@ -11,7 +11,7 @@ What file what do?
 
 - meme.py: just a test
 
-Features:
+# Features:
 - AI task generator
 - Minimum text in interface
 - Resizeable contents
