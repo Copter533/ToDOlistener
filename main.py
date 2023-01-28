@@ -66,7 +66,7 @@ class AllowToProceed(Exception):
 
 
 class TaskLabel(QWidget):
-    def __init__(self, title, description=None, column=0, deadline=None, reward=None):
+    def __init__(self, title, description=None, column=0, deadline=None, reward=None, timestamp=None):
         super().__init__()
 
         self.reward = None if reward == '' else reward
@@ -74,12 +74,14 @@ class TaskLabel(QWidget):
         self.deadline = deadline
         self.description = lang["gui.tasks.labels.no_desc"] if description is None else description
         self.title = title
+        self.upload_timestamp = datetime.now().strftime("[%H:%M] [%d.%m.%y]") if timestamp is None else timestamp
 
         self.background_rect = QFrame()
         self.lower_frame = QFrame()
         self.upper_frame = QFrame()
         self.title_label = QLabel(self.title)
         self.desc_label = QLabel(self.description)
+        self.timestamp_label = QLabel(self.upload_timestamp)
 
         self.prev_button = QPushButton()
         self.next_button = QPushButton()
@@ -106,6 +108,10 @@ class TaskLabel(QWidget):
         self.desc_label.setMinimumWidth(200)
         self.desc_label.setWordWrap(True)
 
+        self.timestamp_label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
+        self.timestamp_label.setStyleSheet('color: white')
+        self.timestamp_label.setMinimumSize(150, 50)
+
         self.del_button.setIcon(QIcon("icons/tile_buttons/trash.svg"))
         self.next_button.setIcon(QIcon("icons/tile_buttons/arrows/next.svg"))
         self.prev_button.setIcon(QIcon("icons/tile_buttons/arrows/prev.svg"))
@@ -122,6 +128,7 @@ class TaskLabel(QWidget):
         self.del_button.setFixedWidth(80)
 
         lower_layout.addWidget(self.prev_button, 0, 0, alignment=Qt.AlignLeft)
+        lower_layout.addWidget(self.timestamp_label, 0, 1, alignment=Qt.AlignCenter)
         lower_layout.addWidget(self.next_button, 0, 2, alignment=Qt.AlignRight)
 
         upper_layout.addWidget(self.title_label)
@@ -526,8 +533,9 @@ class Window(QWidget):
         column = dictionary["column"] if "column" in keys else 0
         deadline = dictionary["deadline"] if "deadline" in keys else None
         reward = dictionary["reward"] if "reward" in keys else None
+        upload_timestamp = dictionary["timestamp"] if "timestamp" in keys else None
 
-        task = TaskLabel(title, desc, column, deadline, reward)
+        task = TaskLabel(title, desc, column, deadline, reward, upload_timestamp)
         task.next_button.clicked.connect(self.move_task_right)
         task.prev_button.clicked.connect(self.move_task_left)
         task.del_button.clicked.connect(self.on_delete_task)
