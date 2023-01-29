@@ -1,19 +1,17 @@
+import json
 import os
 import sys
-import json
-
-from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore import Qt, QSize, QTimer, QThread, pyqtSignal
-from PyQt5.QtWidgets import QApplication, QWidget, QToolTip, QPushButton, QMessageBox, QMainWindow, QLabel, \
-    QInputDialog, QScrollArea, QFrame, QVBoxLayout, QSizePolicy, QGridLayout, QTextEdit, QDateEdit, \
-    QLineEdit, QDialog, QHBoxLayout
-from PyQt5.QtGui import QIcon, QFont
-import openai
-import requests
 from datetime import datetime
 
-from toast import QToaster
+import openai
+import requests
+from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import Qt, QSize, QTimer, QThread
+from PyQt5.QtGui import QIcon, QFont
+from PyQt5.QtWidgets import QApplication, QWidget, QToolTip, QPushButton, QMessageBox, QLabel, \
+    QInputDialog, QScrollArea, QFrame, QVBoxLayout, QSizePolicy, QGridLayout, QTextEdit, QLineEdit, QDialog, QHBoxLayout
 from localisation import Lang
+from toast import QToaster
 
 color_schemes = {
     "dark": {
@@ -74,7 +72,7 @@ class TaskLabel(QWidget):
         self.deadline = deadline
         self.description = lang["gui.tasks.labels.no_desc"] if description is None else description
         self.title = title
-        self.upload_timestamp = datetime.now().strftime("[%H:%M] [%d.%m.%y]") if timestamp is None else timestamp
+        self.upload_timestamp = datetime.now().strftime("[%H:%M:%S] [%d.%m.%y]") if timestamp is None else timestamp
 
         self.background_rect = QFrame()
         self.lower_frame = QFrame()
@@ -169,7 +167,8 @@ class TaskLabel(QWidget):
             "title": self.title,
             "desc": self.description,
             "reward": self.reward,
-            "deadline": self.deadline
+            "deadline": self.deadline,
+            "timestamp": self.upload_timestamp
         }
 
 
@@ -196,7 +195,7 @@ class OpenAIFetcher(QThread):
             prompt = ("Create a title, description and reward for provided topic, if there is too few information "
                       "provided, you can ask for more using one of this methods: "
                       
-                      "chooseOption \"Select one of these options\" | Read|Learn|Repeat (you will get number of option "
+                      "chooseOption \"Message\" | option that splitted with `|` (you will get number of option "
                       "in answer), getText \"What text you want to get\", "
                       "getTrue \"Binary question with yes or no answers\" and "
                       "endDialog \"message\" if you want to end it, can be used if got unclear commands multiple times."
