@@ -249,12 +249,15 @@ class OpenAIFetcher(QThread):
                         self.result = 'REPLY'
                         raise AllowToProceed
                 else:
-                    clear_line = first_line.strip().strip('"')
-                    title, desc, reward = clear_line.split(',')
-                    self.data['title'] = title
-                    self.data['desc'] = desc
-                    self.data['reward'] = reward
-                    self.result = 'OK'
+                    try:
+                        clear_line = first_line.strip().strip('"')
+                        title, desc, reward = clear_line.split(',')
+                        self.data['title'] = title
+                        self.data['desc'] = desc
+                        self.data['reward'] = reward
+                        self.result = 'OK'
+                    except Exception:
+                        pass
             except AllowToProceed:
                 pass
 
